@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pacman</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #0f1720;
+    color: #e8edf1;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px 16px 60px;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 500; margin: 0 0 4px; text-align: center; }
+  .subtitle { font-size: 13px; color: #93a3b1; margin: 0 0 20px; text-align: center; }
+  .stats {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #182430; border: 1px solid #2c3d4d; border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 14px; font-size: 14px;
+  }
+  .stats span.label { color: #93a3b1; }
+  .stats span.value { font-weight: 500; margin-left: 6px; }
+  #gameCanvas {
+    display: block; width: 100%; aspect-ratio: 27 / 13;
+    background: #000; border: 1px solid #2c3d4d; border-radius: 12px;
+    margin-bottom: 16px;
+  }
+  .btn-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .btn-row button.action { flex: 1; }
+  .controls-grid {
+    display: grid; grid-template-columns: 56px 56px 56px;
+    grid-template-rows: 56px 56px; gap: 6px; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .ctrl-btn {
+    background: #182430; border: 1px solid #2c3d4d; border-radius: 8px;
+    color: #e8edf1; font-size: 20px; cursor: pointer;
+  }
+  .ctrl-btn:active { background: #202f3d; }
+  #up { grid-column: 2; grid-row: 1; }
+  #left { grid-column: 1; grid-row: 2; }
+  #down { grid-column: 2; grid-row: 2; }
+  #right { grid-column: 3; grid-row: 2; }
+  button.action {
+    display: block; width: 100%;
+    background: #1d4e73; color: #e8edf1; border: 1px solid #3d8bd4;
+    border-radius: 8px; padding: 12px; font-size: 15px; cursor: pointer;
+  }
+  button.action:hover { background: #3d8bd4; }
+  button.action:disabled { opacity: 0.5; cursor: default; }
+  .overlay-msg {
+    text-align: center; font-size: 14px; color: #93a3b1; min-height: 20px; margin-bottom: 10px;
+  }
+  .note { font-size: 12px; color: #647585; text-align: center; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pacman</h1>
+  <p class="subtitle">Come todos los puntos sin que te atrapen los fantasmas</p>
+
+  <div class="stats">
+    <div><span class="label">Puntaje:</span><span class="value" id="score">0</span></div>
+    <div><span class="label">Mejor:</span><span class="value" id="best">0</span></div>
+    <div><span class="label">Vidas:</span><span class="value" id="lives">3</span></div>
+  </div>
+
+  <canvas id="gameCanvas" width="540" height="260"></canvas>
+
+  <p class="overlay-msg" id="msg">Presiona iniciar para jugar</p>
+
+  <div class="btn-row">
+    <button class="action" id="startBtn">Iniciar</button>
+    <button class="action" id="pauseBtn" disabled>Pausar</button>
+  </div>
+
+  <div class="controls-grid">
+    <button class="ctrl-btn" id="up">&#8593;</button>
+    <button class="ctrl-btn" id="left">&#8592;</button>
+    <button class="ctrl-btn" id="down">&#8595;</button>
+    <button class="ctrl-btn" id="right">&#8594;</button>
+  </div>
+
+  <p class="note">Cruza de un lado a otro por los 4 tuneles. Come la pildora grande para comer fantasmas. La velocidad sube con el puntaje.</p>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const TILE = 20;
+
+const rawMap = [
+"###########################",
+"#O.......................O#",
+"..#.#.#.#.#.#.#.#.#.#.#.#..",
+"#.........................#",
+"#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+"...........##.##...........",
+"#.#.#.#.#.##===##.#.#.#.#.#",
+"#..........#####..........#",
+"..#.#.#.#.#.#.#.#.#.#.#.#..",
+"#............P............#",
+"#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+".O.......................O.",
+"###########################"
+];
+
+const cols = 27;
+const rows = rawMap.length;
+const tunnelRows = [2, 5, 8, 11];
+
+let grid = [];
+let score = 0, lives = 3, running = false, paused = false, loopId;
+let dotsLeft = 0;
+let best = 0;
+let tickCount = 0;
+const baseInterval = 170;
+let currentInterval = baseInterval;
+
+let pac = { x: 0, y: 0, dx: 0, dy: 0, nextDx: 0, nextDy: 0 };
+let pacHome = { x: 0, y: 0 };
+let ghosts = [];
+let ghostHomes = [];
+let scaredTimer = 0;
+
+const ghostStartColors = ['#e24b4a', '#a855f7', '#ec4899'];
+
+let audioCtx = null;
+function beep(freq, duration, type) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.06;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.stop(audioCtx.currentTime + duration);
+  } catch (e) {}
+}
+
+function parseMap(firstTime) {
+  grid = [];
+  dotsLeft = 0;
+  const parsedGhosts = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    const line = rawMap[r].padEnd(cols, '#').slice(0, cols);
+    for (let c = 0; c < cols; c++) {
+      const ch = line[c];
+      if (ch === '#') row.push('wall');
+      else if (ch === '.') { row.push('dot'); dotsLeft++; }
+      else if (ch === 'O') { row.push('power'); dotsLeft++; }
+      else if (ch === 'P') { row.push('empty'); pac.x = c; pac.y = r; pacHome = { x: c, y: r }; }
+      else if (ch === '=') {
+        row.push('empty');
+        parsedGhosts.push({ x: c, y: r, dx: 0, dy: -1, color: ghostStartColors[parsedGhosts.length % 3] });
+      }
+      else row.push('empty');
+    }
+    grid.push(row);
+  }
+  if (firstTime) {
+    ghostHomes = parsedGhosts.map(g => ({ x: g.x, y: g.y }));
+  }
+  ghosts = parsedGhosts.map((g, i) => ({ ...g, x: ghostHomes[i].x, y: ghostHomes[i].y }));
+}
+
+function isWall(x, y) {
+  if (y < 0 || y >= rows) return true;
+  const row = grid[y];
+  if (x < 0 || x >= cols) return false;
+  return row[x] === 'wall';
+}
+
+function wrapX(x, y) {
+  if (x < 0) return tunnelRows.includes(y) ? cols - 1 : x;
+  if (x >= cols) return tunnelRows.includes(y) ? 0 : x;
+  return x;
+}
+
+function canMove(x, y, dx, dy) {
+  const nx = wrapX(x + dx, y);
+  const ny = y + dy;
+  if (nx < 0 || nx >= cols) return false;
+  return !isWall(nx, ny);
+}
+
+function drawMaze() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = grid[r][c];
+      const cx = c * TILE + TILE / 2;
+      const cy = r * TILE + TILE / 2;
+      if (cell === 'wall') {
+        ctx.fillStyle = '#1d4e73';
+        ctx.fillRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE - 2);
+      } else if (cell === 'dot') {
+        ctx.fillStyle = '#f0997b';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (cell === 'power') {
+        ctx.fillStyle = '#faeeda';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+function drawPac() {
+  const cx = pac.x * TILE + TILE / 2;
+  const cy = pac.y * TILE + TILE / 2;
+  ctx.fillStyle = '#f9c74f';
+
+  const phase = (tickCount % 6) / 6;
+  const mouthOpen = Math.abs(Math.sin(phase * Math.PI)) * 0.28 + 0.02;
+
+  let dirAngle = 0;
+  if (pac.dx === -1) dirAngle = Math.PI;
+  else if (pac.dy === -1) dirAngle = -Math.PI / 2;
+  else if (pac.dy === 1) dirAngle = Math.PI / 2;
+
+  const startAngle = dirAngle + mouthOpen * Math.PI;
+  const endAngle = dirAngle - mouthOpen * Math.PI + Math.PI * 2;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, TILE / 2 - 2, startAngle, endAngle);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawGhosts() {
+  ghosts.forEach(g => {
+    const cx = g.x * TILE + TILE / 2;
+    const cy = g.y * TILE + TILE / 2;
+    ctx.fillStyle = scaredTimer > 0 ? '#3d8bd4' : g.color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, TILE / 2 - 2, Math.PI, 0);
+    ctx.lineTo(cx + TILE / 2 - 2, cy + TILE / 2 - 2);
+    ctx.lineTo(cx - TILE / 2 + 2, cy + TILE / 2 - 2);
+    ctx.closePath();
+    ctx.fill();
+  });
+}
+
+function draw() {
+  drawMaze();
+  drawPac();
+  drawGhosts();
+}
+
+function movePac() {
+  if (canMove(pac.x, pac.y, pac.nextDx, pac.nextDy)) {
+    pac.dx = pac.nextDx;
+    pac.dy = pac.nextDy;
+  }
+  if (canMove(pac.x, pac.y, pac.dx, pac.dy)) {
+    pac.x = wrapX(pac.x + pac.dx, pac.y);
+    pac.y = pac.y + pac.dy;
+  }
+  const cell = grid[pac.y][pac.x];
+  if (cell === 'dot') {
+    grid[pac.y][pac.x] = 'empty';
+    score += 10;
+    dotsLeft--;
+    updateScore();
+    beep(660, 0.05, 'square');
+    adjustSpeed();
+  } else if (cell === 'power') {
+    grid[pac.y][pac.x] = 'empty';
+    score += 50;
+    dotsLeft--;
+    scaredTimer = 60;
+    updateScore();
+    beep(220, 0.15, 'sawtooth');
+    adjustSpeed();
+  }
+  if (dotsLeft <= 0) {
+    winGame();
+  }
+}
+
+function adjustSpeed() {
+  const steps = Math.floor(score / 150);
+  const newInterval = Math.max(90, baseInterval - steps * 10);
+  if (newInterval !== currentInterval) {
+    currentInterval = newInterval;
+    if (running && !paused) {
+      clearInterval(loopId);
+      loopId = setInterval(gameLoop, currentInterval);
+    }
+  }
+}
+
+function moveGhosts() {
+  ghosts.forEach(g => {
+    const dirs = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+    const valid = dirs.filter(d => !(d.dx === -g.dx && d.dy === -g.dy) && canMove(g.x, g.y, d.dx, d.dy));
+    let options = valid.length > 0 ? valid : dirs.filter(d => canMove(g.x, g.y, d.dx, d.dy));
+    if (options.length === 0) return;
+    options.sort((a, b) => {
+      const da = Math.abs((g.x + a.dx) - pac.x) + Math.abs((g.y + a.dy) - pac.y);
+      const db = Math.abs((g.x + b.dx) - pac.x) + Math.abs((g.y + b.dy) - pac.y);
+      return scaredTimer > 0 ? db - da : da - db;
+    });
+    const choice = Math.random() < 0.75 ? options[0] : options[Math.floor(Math.random() * options.length)];
+    g.dx = choice.dx; g.dy = choice.dy;
+    g.x = wrapX(g.x + g.dx, g.y);
+    g.y = g.y + g.dy;
+  });
+}
+
+function checkCollisions() {
+  ghosts.forEach((g, i) => {
+    if (g.x === pac.x && g.y === pac.y) {
+      if (scaredTimer > 0) {
+        const home = ghostHomes[i] || ghostHomes[0];
+        g.x = home.x; g.y = home.y;
+        score += 200;
+        updateScore();
+        beep(880, 0.15, 'triangle');
+        adjustSpeed();
+      } else {
+        loseLife();
+      }
+    }
+  });
+}
+
+function updateScore() {
+  document.getElementById('score').textContent = score;
+  if (score > best) {
+    best = score;
+    document.getElementById('best').textContent = best;
+  }
+}
+
+function loseLife() {
+  lives--;
+  document.getElementById('lives').textContent = lives;
+  beep(120, 0.3, 'sawtooth');
+  if (lives <= 0) {
+    endGame('Perdiste. Puntaje final: ' + score);
+  } else {
+    resetPositions();
+  }
+}
+
+function resetPositions() {
+  pac.x = pacHome.x; pac.y = pacHome.y;
+  pac.dx = 0; pac.dy = 0; pac.nextDx = 0; pac.nextDy = 0;
+  ghosts.forEach((g, i) => {
+    const home = ghostHomes[i] || ghostHomes[0];
+    g.x = home.x; g.y = home.y;
+  });
+}
+
+function winGame() {
+  beep(523, 0.12, 'triangle');
+  setTimeout(() => beep(659, 0.12, 'triangle'), 130);
+  setTimeout(() => beep(784, 0.2, 'triangle'), 260);
+  endGame('Ganaste! Puntaje final: ' + score);
+}
+
+function endGame(text) {
+  running = false;
+  paused = false;
+  clearInterval(loopId);
+  document.getElementById('msg').textContent = text + ' \u2014 presiona iniciar para volver a jugar';
+  document.getElementById('startBtn').textContent = 'Reintentar';
+  document.getElementById('pauseBtn').disabled = true;
+  document.getElementById('pauseBtn').textContent = 'Pausar';
+}
+
+function gameLoop() {
+  if (!running || paused) return;
+  tickCount++;
+  movePac();
+  moveGhosts();
+  checkCollisions();
+  if (scaredTimer > 0) scaredTimer--;
+  draw();
+}
+
+function setDirection(dx, dy) {
+  if (!running || paused) return;
+  pac.nextDx = dx; pac.nextDy = dy;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') setDirection(0, -1);
+  else if (e.key === 'ArrowDown') setDirection(0, 1);
+  else if (e.key === 'ArrowLeft') setDirection(-1, 0);
+  else if (e.key === 'ArrowRight') setDirection(1, 0);
+  else if (e.key === ' ') togglePause();
+  else if (e.key === 'Enter') {
+    if (!running) document.getElementById('startBtn').click();
+  }
+});
+document.getElementById('up').addEventListener('click', () => setDirection(0, -1));
+document.getElementById('down').addEventListener('click', () => setDirection(0, 1));
+document.getElementById('left').addEventListener('click', () => setDirection(-1, 0));
+document.getElementById('right').addEventListener('click', () => setDirection(1, 0));
+
+function togglePause() {
+  if (!running) return;
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? 'Reanudar' : 'Pausar';
+  document.getElementById('msg').textContent = paused ? 'Pausado' : '';
+}
+
+document.getElementById('pauseBtn').addEventListener('click', togglePause);
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  score = 0; lives = 3; scaredTimer = 0; tickCount = 0;
+  currentInterval = baseInterval;
+  document.getElementById('score').textContent = score;
+  document.getElementById('lives').textContent = lives;
+  parseMap(ghostHomes.length === 0);
+  running = true;
+  paused = false;
+  document.getElementById('msg').textContent = '';
+  document.getElementById('startBtn').textContent = 'Reiniciar';
+  document.getElementById('pauseBtn').disabled = false;
+  document.getElementById('pauseBtn').textContent = 'Pausar';
+  draw();
+  clearInterval(loopId);
+  loopId = setInterval(gameLoop, currentInterval);
+});
+
+parseMap(true);
+draw();
+</script>
+</body>
+</html>
