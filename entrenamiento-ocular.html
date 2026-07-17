@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrenamiento ocular</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --surface: #182430;
+    --surface-2: #202f3d;
+    --border: #2c3d4d;
+    --text: #e8edf1;
+    --text-secondary: #93a3b1;
+    --text-muted: #647585;
+    --accent: #3d8bd4;
+    --accent-dark: #1d4e73;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 24px 16px 60px;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 500; margin: 0 0 4px; }
+  .subtitle { font-size: 14px; color: var(--text-secondary); margin: 0 0 24px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; padding: 10px; text-align: center; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+    cursor: pointer; font-size: 14px;
+  }
+  .tab.active { background: var(--accent-dark); border-color: var(--accent); color: var(--text); }
+  .plan-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .plan-btn {
+    flex: 1; padding: 12px 8px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text); cursor: pointer; font-size: 13px; text-align: center;
+  }
+  .plan-btn.active { border: 2px solid var(--accent); background: var(--accent-dark); }
+  .plan-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .field-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .field-row label { font-size: 13px; color: var(--text-secondary); min-width: 110px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .field-out { font-size: 13px; font-weight: 500; min-width: 60px; text-align: right; }
+  button.action {
+    background: var(--accent-dark); color: var(--text); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer;
+  }
+  button.action:hover { background: var(--accent); }
+  button.ghost {
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer;
+  }
+  .stage {
+    position: relative; width: 100%; height: 320px; background: var(--surface-2);
+    border-radius: 12px; overflow: hidden; margin-bottom: 14px;
+  }
+  #dot {
+    position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+    left: 50%; top: 50%; transform: translate(-50%,-50%); transition: opacity 0.15s;
+  }
+  .focus-stage { display: flex; align-items: center; justify-content: center; }
+  #comboDot {
+    position: absolute; border-radius: 50%; background: var(--accent);
+    left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 22px; height: 22px; transition: opacity 0.15s, width 0.35s ease, height 0.35s ease;
+  }
+  #focusDot { width: 70px; height: 70px; border-radius: 50%; background: var(--accent); transition: all 0.4s ease; }
+  .status-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .status-row p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+  .note { font-size: 13px; color: var(--text-muted); margin-top: 10px; }
+  .hidden { display: none; }
+  .center-text { text-align: center; }
+  .big-label { font-size: 17px; font-weight: 500; margin: 0 0 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Entrenamiento ocular</h1>
+  <p class="subtitle">Seguimiento de punto y enfoque cerca-lejos, con planes ajustables</p>
+
+  <div class="card">
+    <h2>Plan</h2>
+    <div class="plan-row">
+      <div class="plan-btn active" data-plan="principiante">
+        Principiante
+        <div class="plan-desc">15s, lenta, 6 rep.</div>
+      </div>
+      <div class="plan-btn" data-plan="intermedio">
+        Intermedio
+        <div class="plan-desc">30s, media, 10 rep.</div>
+      </div>
+      <div class="plan-btn" data-plan="avanzado">
+        Avanzado
+        <div class="plan-desc">45s, rapida, 14 rep.</div>
+      </div>
+      <div class="plan-btn" data-plan="personalizado">
+        Personalizado
+        <div class="plan-desc">Ajusta tú los valores</div>
+      </div>
+    </div>
+    <div id="customFields" class="hidden" style="margin-top:14px;">
+      <div class="field-row">
+        <label>Duracion seguimiento</label>
+        <input type="range" id="durSlider" min="10" max="60" step="5" value="30">
+        <span class="field-out" id="durOut">30s</span>
+      </div>
+      <div class="field-row">
+        <label>Velocidad</label>
+        <input type="range" id="spdSlider" min="1" max="3" step="1" value="2">
+        <span class="field-out" id="spdOut">media</span>
+      </div>
+      <div class="field-row">
+        <label>Repeticiones enfoque</label>
+        <input type="range" id="repSlider" min="4" max="20" step="2" value="10">
+        <span class="field-out" id="repOut">10</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tabTrack">Seguimiento</div>
+    <div class="tab" id="tabFocus">Enfoque cerca-lejos</div>
+    <div class="tab" id="tabCombo">Combinado</div>
+  </div>
+
+  <div class="card" id="panelTrack">
+    <div class="stage"><div id="dot"></div></div>
+    <div class="status-row">
+      <button class="action" id="trackBtn">Iniciar</button>
+      <p id="trackTime">30s</p>
+    </div>
+    <p class="note">Sigue el punto solo con los ojos, sin mover la cabeza.</p>
+  </div>
+
+  <div class="card hidden" id="panelFocus">
+    <div class="stage focus-stage"><div id="focusDot"></div></div>
+    <div class="center-text">
+      <p class="big-label" id="focusLabel">Preparado</p>
+      <p id="focusRep" style="color:var(--text-secondary); font-size:13px; margin:0 0 14px;">Repeticion 0 de 10</p>
+    </div>
+    <div class="center-text">
+      <button class="action" id="focusBtn">Iniciar</button>
+    </div>
+    <p class="note center-text">El punto crece (cerca) y se encoge (lejos). Enfocalo en cada cambio.</p>
+  </div>
+
+  <div class="card hidden" id="panelCombo">
+    <div class="stage"><div id="comboDot"></div></div>
+    <div class="status-row">
+      <button class="action" id="comboBtn">Iniciar</button>
+      <p id="comboTime">30s</p>
+    </div>
+    <p class="note">El punto se mueve a posiciones aleatorias y ademas crece (cerca) o se encoge (lejos) en cada salto. Sigue y enfoca sin mover la cabeza.</p>
+  </div>
+
+  <div class="card">
+    <h2>Recordatorio</h2>
+    <p class="note" style="margin-top:0;">Esto entrena velocidad de seguimiento y coordinacion ocular — util para lectura rapida. No corrige miopia, hipermetropia, astigmatismo ni presbicia; esas dependen de la estructura del ojo, no del entrenamiento muscular.</p>
+  </div>
+</div>
+
+<script>
+const plans = {
+  principiante: { dur: 15, speed: 1, reps: 6 },
+  intermedio:   { dur: 30, speed: 2, reps: 10 },
+  avanzado:     { dur: 45, speed: 3, reps: 14 }
+};
+let current = { ...plans.principiante };
+
+const planBtns = document.querySelectorAll('.plan-btn');
+const customFields = document.getElementById('customFields');
+const durSlider = document.getElementById('durSlider');
+const spdSlider = document.getElementById('spdSlider');
+const repSlider = document.getElementById('repSlider');
+const durOut = document.getElementById('durOut');
+const spdOut = document.getElementById('spdOut');
+const repOut = document.getElementById('repOut');
+const speedLabels = { 1: 'lenta', 2: 'media', 3: 'rapida' };
+const speedMs = { 1: 1400, 2: 900, 3: 550 };
+
+function applyPlan(name) {
+  planBtns.forEach(b => b.classList.toggle('active', b.dataset.plan === name));
+  if (name === 'personalizado') {
+    customFields.classList.remove('hidden');
+    current.dur = parseInt(durSlider.value);
+    current.speed = parseInt(spdSlider.value);
+    current.reps = parseInt(repSlider.value);
+  } else {
+    customFields.classList.add('hidden');
+    current = { ...plans[name] };
+  }
+  document.getElementById('trackTime').textContent = current.dur + 's';
+  document.getElementById('focusRep').textContent = 'Repeticion 0 de ' + current.reps;
+  document.getElementById('comboTime').textContent = current.dur + 's';
+}
+
+planBtns.forEach(btn => btn.addEventListener('click', () => applyPlan(btn.dataset.plan)));
+
+durSlider.addEventListener('input', () => { durOut.textContent = durSlider.value + 's'; current.dur = parseInt(durSlider.value); document.getElementById('trackTime').textContent = current.dur + 's'; document.getElementById('comboTime').textContent = current.dur + 's'; });
+spdSlider.addEventListener('input', () => { spdOut.textContent = speedLabels[spdSlider.value]; current.speed = parseInt(spdSlider.value); });
+repSlider.addEventListener('input', () => { repOut.textContent = repSlider.value; current.reps = parseInt(repSlider.value); document.getElementById('focusRep').textContent = 'Repeticion 0 de ' + current.reps; });
+
+const tabTrack = document.getElementById('tabTrack');
+const tabFocus = document.getElementById('tabFocus');
+const tabCombo = document.getElementById('tabCombo');
+const panelTrack = document.getElementById('panelTrack');
+const panelFocus = document.getElementById('panelFocus');
+const panelCombo = document.getElementById('panelCombo');
+const allTabs = [tabTrack, tabFocus, tabCombo];
+const allPanels = [panelTrack, panelFocus, panelCombo];
+function showPanel(tab, panel) {
+  allTabs.forEach(t => t.classList.toggle('active', t === tab));
+  allPanels.forEach(p => p.classList.toggle('hidden', p !== panel));
+}
+tabTrack.addEventListener('click', () => showPanel(tabTrack, panelTrack));
+tabFocus.addEventListener('click', () => showPanel(tabFocus, panelFocus));
+tabCombo.addEventListener('click', () => showPanel(tabCombo, panelCombo));
+
+const dot = document.getElementById('dot');
+const trackBtn = document.getElementById('trackBtn');
+const trackTime = document.getElementById('trackTime');
+let trackInterval = null, trackCountdown = null, trackRunning = false;
+
+function moveDot() {
+  const container = dot.parentElement;
+  const w = container.clientWidth - 30;
+  const h = container.clientHeight - 30;
+  const x = Math.random() * w + 15;
+  const y = Math.random() * h + 15;
+  dot.style.opacity = '0';
+  setTimeout(() => {
+    dot.style.left = x + 'px';
+    dot.style.top = y + 'px';
+    dot.style.opacity = '1';
+  }, 120);
+}
+
+function stopTrack() {
+  clearInterval(trackInterval); clearInterval(trackCountdown);
+  trackRunning = false;
+  trackBtn.textContent = 'Iniciar';
+  trackTime.textContent = current.dur + 's';
+  dot.style.left = '50%'; dot.style.top = '50%'; dot.style.opacity = '1';
+}
+
+trackBtn.addEventListener('click', () => {
+  if (trackRunning) { stopTrack(); return; }
+  trackRunning = true;
+  let secondsLeft = current.dur;
+  trackTime.textContent = secondsLeft + 's';
+  trackBtn.textContent = 'Detener';
+  trackInterval = setInterval(moveDot, speedMs[current.speed]);
+  trackCountdown = setInterval(() => {
+    secondsLeft--;
+    trackTime.textContent = secondsLeft + 's';
+    if (secondsLeft <= 0) stopTrack();
+  }, 1000);
+});
+
+const focusDot = document.getElementById('focusDot');
+const focusLabel = document.getElementById('focusLabel');
+const focusRep = document.getElementById('focusRep');
+const focusBtn = document.getElementById('focusBtn');
+let focusInterval = null, focusRunning = false, repCount = 0;
+
+function stopFocus(done) {
+  clearInterval(focusInterval);
+  focusRunning = false;
+  focusBtn.textContent = 'Iniciar';
+  focusLabel.textContent = done ? 'Listo' : 'Preparado';
+  focusRep.textContent = done ? (current.reps + ' de ' + current.reps + ' completadas') : ('Repeticion 0 de ' + current.reps);
+  focusDot.style.width = '70px'; focusDot.style.height = '70px';
+  repCount = 0;
+}
+
+function focusStep() {
+  repCount++;
+  if (repCount > current.reps) { stopFocus(true); return; }
+  const near = repCount % 2 === 1;
+  focusDot.style.width = near ? '110px' : '30px';
+  focusDot.style.height = near ? '110px' : '30px';
+  focusLabel.textContent = near ? 'Enfoca cerca' : 'Enfoca lejos';
+  focusRep.textContent = 'Repeticion ' + Math.ceil(repCount / 2) + ' de ' + current.reps;
+}
+
+focusBtn.addEventListener('click', () => {
+  if (focusRunning) { stopFocus(false); return; }
+  focusRunning = true;
+  repCount = 0;
+  focusBtn.textContent = 'Detener';
+  focusStep();
+  focusInterval = setInterval(focusStep, 3000);
+});
+
+const comboDot = document.getElementById('comboDot');
+const comboBtn = document.getElementById('comboBtn');
+const comboTime = document.getElementById('comboTime');
+let comboMoveInterval = null, comboCountdown = null, comboRunning = false, comboNear = false;
+
+function moveComboDot() {
+  const container = comboDot.parentElement;
+  comboNear = !comboNear;
+  const size = comboNear ? 90 : 22;
+  const w = container.clientWidth - size;
+  const h = container.clientHeight - size;
+  const x = Math.random() * w + size / 2;
+  const y = Math.random() * h + size / 2;
+  comboDot.style.opacity = '0';
+  setTimeout(() => {
+    comboDot.style.width = size + 'px';
+    comboDot.style.height = size + 'px';
+    comboDot.style.left = x + 'px';
+    comboDot.style.top = y + 'px';
+    comboDot.style.opacity = '1';
+  }, 120);
+}
+
+function stopCombo() {
+  clearInterval(comboMoveInterval); clearInterval(comboCountdown);
+  comboRunning = false;
+  comboBtn.textContent = 'Iniciar';
+  comboTime.textContent = current.dur + 's';
+  comboDot.style.width = '22px'; comboDot.style.height = '22px';
+  comboDot.style.left = '50%'; comboDot.style.top = '50%'; comboDot.style.opacity = '1';
+}
+
+comboBtn.addEventListener('click', () => {
+  if (comboRunning) { stopCombo(); return; }
+  comboRunning = true;
+  let secondsLeft = current.dur;
+  comboTime.textContent = secondsLeft + 's';
+  comboBtn.textContent = 'Detener';
+  comboMoveInterval = setInterval(moveComboDot, speedMs[current.speed]);
+  comboCountdown = setInterval(() => {
+    secondsLeft--;
+    comboTime.textContent = secondsLeft + 's';
+    if (secondsLeft <= 0) stopCombo();
+  }, 1000);
+});
+
+applyPlan('principiante');
+</script>
+</body>
+</html>
